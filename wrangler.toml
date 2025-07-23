@@ -1,6 +1,6 @@
 #:schema node_modules/wrangler/config-schema.json
 name = "gemini-playground"
-main = "src/index.js"
+main = "src/api_proxy/worker.mjs"
 compatibility_date = "2024-12-30"
 compatibility_flags = ["nodejs_compat"]
 assets = { directory = "./src/static" }

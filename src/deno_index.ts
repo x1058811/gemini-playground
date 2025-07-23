@@ -68,38 +68,54 @@ async function handleWebSocket(req: Request): Promise<Response> {
 }
 
 async function handleAPIRequest(req: Request): Promise<Response> {
-  try {
-    const worker = await import('./api_proxy/worker.mjs');
-    return await worker.default.fetch(req);
-  } catch (error) {
-    console.error('API request error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    const errorStatus = (error as { status?: number }).status || 500;
-    return new Response(errorMessage, {
-      status: errorStatus,
-      headers: {
-        'content-type': 'text/plain;charset=UTF-8',
-      }
-    });
-  }
+  const url = new URL(req.url);
+  const targetUrl = `https://generativelanguage.googleapis.com${url.pathname}${url.search}`;
+  console.log(`Proxying API request to: ${targetUrl}`);
+
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('Host', 'generativelanguage.googleapis.com');
+
+  const proxyResponse = await fetch(targetUrl, {
+    method: req.method,
+    headers: requestHeaders,
+    body: req.body,
+    redirect: 'follow'
+  });
+
+  const responseHeaders = new Headers(proxyResponse.headers);
+  responseHeaders.set('Access-Control-Allow-Origin', '*');
+  responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  responseHeaders.set('Access-Control-Allow-Headers', '*');
+
+  return new Response(proxyResponse.body, {
+    status: proxyResponse.status,
+    statusText: proxyResponse.statusText,
+    headers: responseHeaders
+  });
 }
 
 async function handleRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
   console.log('Request URL:', req.url);
 
-  // WebSocket 处理
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+      }
+    });
+  }
+
   if (req.headers.get("Upgrade")?.toLowerCase() === "websocket") {
     return handleWebSocket(req);
   }
 
-  if (url.pathname.endsWith("/chat/completions") ||
-      url.pathname.endsWith("/embeddings") ||
-      url.pathname.endsWith("/models")) {
+  if (url.pathname.startsWith("/v1beta/")) {
     return handleAPIRequest(req);
   }
 
-  // 静态文件处理
   try {
     let filePath = url.pathname;
     if (filePath === '/' || filePath === '/index.html') {
@@ -127,4 +143,4 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 }
 
-Deno.serve(handleRequest); 
+Deno.serve(handleRequest);
